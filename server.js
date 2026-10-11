@@ -139,12 +139,27 @@ function createApp(options = {}) {
   }
 
   const { client: database, local } = openDatabase(options);
-  const ready = initializeDatabase(database, local);
-  ready.catch((error) => console.error('Database initialization failed:', error));
+  const withRetry = (operation) => operation().catch((error) => {
+    if (!isDroppedConnection(error)) throw error;
+    return operation();
+  });
+
+  // A failed initialization is retried on the next request instead of being cached.
+  let initialization = null;
+  const ensureReady = () => {
+    if (!initialization) {
+      initialization = withRetry(() => initializeDatabase(database, local)).catch((error) => {
+        initialization = null;
+        console.error('Database initialization failed:', error);
+        throw error;
+      });
+    }
+    return initialization;
+  };
 
   const query = async (sql, args = []) => {
-    await ready;
-    return database.execute({ sql, args });
+    await ensureReady();
+    return withRetry(() => database.execute({ sql, args }));
   };
 
   const app = express();
@@ -370,7 +385,7 @@ function createApp(options = {}) {
 
   return {
     app,
-    ready,
+    ready: ensureReady,
     close() {
       clearInterval(cleanupTimer);
       database.close();
@@ -380,6 +395,13 @@ function createApp(options = {}) {
 
 function toApplication(row) {
   return { id: row.id, company: row.company, role: row.role, status: row.status };
+}
+
+// Serverless instances can resume with keep-alive sockets the database has already closed.
+function isDroppedConnection(error) {
+  const code = error.cause?.code || error.code;
+  return ['UND_ERR_SOCKET', 'ECONNRESET', 'EPIPE', 'UND_ERR_CLOSED'].includes(code) ||
+    /fetch failed|other side closed/i.test(error.message);
 }
 
 function isUniqueViolation(error) {
