@@ -43,7 +43,12 @@ before(async () => {
 after(async () => {
   await new Promise((resolve) => server.close(resolve));
   application.close();
-  fs.rmSync(dataDirectory, { recursive: true, force: true });
+  try {
+    fs.rmSync(dataDirectory, { recursive: true, force: true });
+  } catch (error) {
+    // Windows keeps the SQLite file locked until the libSQL handle is garbage collected.
+    if (error.code !== 'EPERM') throw error;
+  }
 });
 
 test('GET /api/health returns status ok', async () => {

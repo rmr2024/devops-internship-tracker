@@ -80,6 +80,26 @@ git remote add origin https://github.com/<your-username>/internship-tracker.git
 git push -u origin main
 ```
 
+## Vercel Deployment
+Vercel functions have no persistent disk, so the Vercel deployment stores data in a hosted [Turso](https://turso.tech) database.
+
+1. Create a Turso database (Vercel dashboard -> Storage -> Turso, or at turso.tech) and note its URL (`libsql://...`) and an auth token.
+2. Import the GitHub repository in Vercel (or run `vercel link`).
+3. Add these environment variables for Production:
+
+| Variable | Value |
+|---|---|
+| `TURSO_DATABASE_URL` | `libsql://<your-db>.turso.io` |
+| `TURSO_AUTH_TOKEN` | Turso database token |
+| `SESSION_SECRET` | Random string of at least 32 characters |
+| `NODE_ENV` | `production` |
+| `COOKIE_SECURE` | `true` |
+| `TRUST_PROXY` | `true` |
+
+4. Deploy (`vercel --prod` or push to `main`). Tables are created automatically on first request.
+
+`vercel.json` sends every request to `api/index.js`, which wraps the Express app.
+
 ## Jenkins Pipeline Procedure
 1. Make sure the Jenkins agent has Git, Node.js/npm, Docker CLI and curl, and that the `jenkins` user can access the Docker daemon (`sudo usermod -aG docker jenkins`, then restart Jenkins). In Jenkins credentials, add a **Secret text** credential with ID `internship-tracker-session-secret` and a long random value.
 2. Jenkins dashboard -> New Item -> name `internship-tracker-pipeline` -> Pipeline -> OK.
